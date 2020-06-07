@@ -1,0 +1,240 @@
+import itertools
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.ticker import NullFormatter
+import pandas as pd
+import numpy as np
+import matplotlib.ticker as ticker
+from sklearn import preprocessing
+%matplotlib inline
+
+df = pd.read_csv('loan_train.csv')
+df['due_date'] = pd.to_datetime(df['due_date'])
+df['effective_date'] = pd.to_datetime(df['effective_date'])
+df.head()
+
+df['loan_status'].value_counts()
+
+!conda install -c anaconda seaborn -y
+
+import seaborn as sns
+
+bins = np.linspace(df.Principal.min(), df.Principal.max(), 10)
+g = sns.FacetGrid(df, col="Gender", hue="loan_status", palette="Set1", col_wrap=2)
+g.map(plt.hist, 'Principal', bins=bins, ec="k")
+
+g.axes[-1].legend()
+plt.show()
+
+bins = np.linspace(df.age.min(), df.age.max(), 10)
+g = sns.FacetGrid(df, col="Gender", hue="loan_status", palette="Set1", col_wrap=2)
+g.map(plt.hist, 'age', bins=bins, ec="k")
+
+g.axes[-1].legend()
+plt.show()
+
+df['dayofweek'] = df['effective_date'].dt.dayofweek
+bins = np.linspace(df.dayofweek.min(), df.dayofweek.max(), 10)
+g = sns.FacetGrid(df, col="Gender", hue="loan_status", palette="Set1", col_wrap=2)
+g.map(plt.hist, 'dayofweek', bins=bins, ec="k")
+g.axes[-1].legend()
+plt.show()
+
+df['weekend'] = df['dayofweek'].apply(lambda x: 1 if (x>3)  else 0)
+df.groupby(['Gender'])['loan_status'].value_counts(normalize=True)
+df['Gender'].replace(to_replace=['male','female'], value=[0,1],inplace=True)
+df.head()
+
+Feature = df[['Principal','terms','age','Gender','weekend']]
+Feature = pd.concat([Feature,pd.get_dummies(df['education'])], axis=1)
+Feature.drop(['Master or Above'], axis = 1,inplace=True)
+Feature.head()
+
+X = Feature.astype('float64')
+y = df['loan_status'].values
+
+X= preprocessing.StandardScaler().fit(X).transform(X)
+
+from sklearn.model_selection import train_test_split
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.metrics import jaccard_similarity_score, f1_score, log_loss
+
+#split dataset into training set and validation set
+training_data, validation_data, training_label, validation_label = train_test_split(X, y, test_size = 0.2, random_state = 100)
+print(len(training_data))
+print(len(training_label))
+
+#finding the best k with highest accuracy, for k = 1 up to k = 20
+jaccard_knn =[]
+F1_knn = []
+for k in range(1,21):
+    classifier = KNeighborsClassifier(n_neighbors = k) 
+    classifier.fit(training_data, training_label)
+    prediction_label = classifier.predict(validation_data)
+    jaccard_score_knn = jaccard_similarity_score(validation_label, prediction_label)
+    F1_score_knn = f1_score(validation_label, prediction_label, average = 'micro')
+    jaccard_knn.append(jaccard_score_knn)
+    F1_knn.append(F1_score_knn)
+
+print(jaccard_knn)
+print(F1_knn)
+
+#plot k vs accuracy
+k_list = range(1,21)
+
+plt.plot(k_list, jaccard_knn)
+plt.xlabel("k")
+plt.ylabel("Jaccard Similarity Score")
+plt.title("Jaccard Similarity Evaluation for KNN")
+plt.show()
+plt.plot(k_list, F1_knn)
+plt.xlabel("k")
+plt.ylabel("F1 Score")
+plt.title("F1 Score Evaluation for KNN")
+plt.show()
+
+from sklearn.tree import DecisionTreeClassifier
+
+jaccard_dt =[]
+F1_dt = []
+for k in range(1,21):
+    tree = DecisionTreeClassifier(max_depth = k)
+    tree.fit(training_data, training_label)
+    prediction_label = classifier.predict(validation_data)
+    jaccard_score_dt = jaccard_similarity_score(validation_label, prediction_label)
+    F1_score_dt = f1_score(validation_label, prediction_label, average = 'micro')
+    jaccard_dt.append(jaccard_score_dt)
+    F1_dt.append(F1_score_dt)
+
+x = range(1, 21)
+
+plt.plot(k_list, jaccard_dt)
+plt.xlabel("k")
+plt.ylabel("Jaccard Similarity Score")
+plt.title("Jaccard Similarity Evaluation for Decision Tree")
+plt.show()
+plt.plot(k_list, F1_dt)
+plt.xlabel("k")
+plt.ylabel("F1 Score")
+plt.title("F1 Score Evaluation for Decision Tree")
+plt.show()
+
+from sklearn.svm import SVC
+
+jaccard_svm = []
+F1_svm = []
+for k in range(1,21):
+    clf = SVC(kernel = 'linear', C = k)
+    clf.fit(training_data, training_label)
+    prediction_label = clf.predict(validation_data)
+    jaccard = jaccard_similarity_score(validation_label, prediction_label)
+    F1_score = f1_score(validation_label, prediction_label, average = 'micro')
+    jaccard_svm.append(jaccard)
+    F1_svm.append(F1_score)
+
+x = range(1,21)
+
+plt.plot(x, jaccard_svm)
+plt.xlabel("k")
+plt.ylabel("Jaccard Similarity Score")
+plt.title("Jaccard Similarity Evaluation for Decision Tree")
+plt.show()
+plt.plot(x, F1_svm)
+plt.xlabel("k")
+plt.ylabel("F1 Score")
+plt.title("F1 Score Evaluation for Decision Tree")
+plt.show()
+
+from sklearn.linear_model import LogisticRegression
+
+jaccard_lr = []
+F1_lr = []
+LogRess = []
+for k in range(1,100):
+    k = float(k)/100.0
+    model = LogisticRegression(C = k, solver = 'liblinear')
+    model.fit(training_data, training_label)
+    prediction_label = model.predict(validation_data)
+    prediction_proba = model.predict_proba(validation_data)
+    jaccard = jaccard_similarity_score(validation_label, prediction_label)
+    F1_score = f1_score(validation_label, prediction_label, average = 'micro')
+    LogRess_score = log_loss(validation_label, prediction_proba)
+    jaccard_lr.append(jaccard)
+    F1_lr.append(F1_score)
+    LogRess.append(LogRess_score)
+
+k = []
+for i in range(1, 100):
+    i = float(i)/100.0
+    k.append(i)
+
+plt.plot(k, jaccard_lr)
+plt.xlabel("k")
+plt.ylabel("Jaccard Similarity Score")
+plt.title("Jaccard Similarity Evaluation for Decision Tree")
+plt.show()
+plt.plot(k, F1_lr)
+plt.xlabel("k")
+plt.ylabel("F1 Score")
+plt.title("F1 Score Evaluation for Decision Tree")
+plt.show()
+plt.plot(k, LogRess)
+plt.xlabel("k")
+plt.ylabel("LogRes Score")
+plt.title("LogRes Score Evaluation for Decision Tree")
+plt.show()
+
+from sklearn.metrics import jaccard_similarity_score
+from sklearn.metrics import f1_score
+from sklearn.metrics import log_loss
+
+test_df = pd.read_csv('loan_test.csv')
+test_df.head()
+
+test_df['due_date'] = pd.to_datetime(test_df['due_date'])
+test_df['effective_date'] = pd.to_datetime(test_df['effective_date'])
+test_df['dayofweek'] = test_df['effective_date'].dt.dayofweek
+test_df['weekend'] = test_df['dayofweek'].apply(lambda x: 1 if (x>3)  else 0)
+test_df['Gender'].replace(to_replace=['male','female'], value=[0,1],inplace=True)
+test_df.head()
+
+Feature_test = test_df[['Principal','terms','age','Gender','weekend']]
+Feature_test = pd.concat([Feature_test,pd.get_dummies(test_df['education'])], axis=1)
+Feature_test.drop(['Master or Above'], axis = 1,inplace=True)
+Feature_test.head()
+
+X_test = Feature_test.astype('float64')
+X_test[0:5]
+
+y_test = test_df['loan_status'].values
+y[0:5]
+
+X_test = preprocessing.StandardScaler().fit(X_test).transform(X_test)
+X_test[0:5]
+
+knn = KNeighborsClassifier(n_neighbors = best_k_knn)
+knn.fit(training_data, training_label)
+yhat_knn = knn.predict(X_test)
+
+dt = DecisionTreeClassifier(max_depth = best_k_dt)
+dt.fit(training_data, training_label)
+yhat_dt = dt.predict(X_test)
+
+svm = SVC(kernel = 'linear', C = best_k_svm)
+svm.fit(training_data, training_label)
+yhat_svm = svm.predict(X_test)
+
+lr = LogisticRegression(C = best_k_lr, solver = 'liblinear')
+lr.fit(training_data, training_label)
+yhat_lr = lr.predict(X_test)
+yhat_lr_proba = lr.predict_proba(X_test)
+
+labels = ['          KNN', 'Decision Tree', '          SVM', 'LogRegression']
+
+for i, yhat in enumerate((yhat_knn, yhat_dt, yhat_svm)):
+    label = labels[i]
+    print(label, "Jaccard: %.2f F1-score: %.2f LogLoss: N/A" % (jaccard_similarity_score(y_test, yhat),
+                                                    f1_score(y_test, yhat, average ='micro')))
+print(labels[3], "Jaccard: %.2f F1-score: %.2f LogLoss: %.2f" % (jaccard_similarity_score(y_test, yhat_lr),
+                                                                f1_score(y_test, yhat_lr, average = 'micro'),
+                                                                log_loss(y_test, yhat_lr_proba)))
