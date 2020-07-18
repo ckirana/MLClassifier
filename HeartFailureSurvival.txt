@@ -1,0 +1,213 @@
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import seaborn as sns
+from scipy import stats
+from scipy.stats import norm, gamma, kstest, chisquare
+
+df = pd.read_csv('http://archive.ics.uci.edu/ml/machine-learning-databases/00519/heart_failure_clinical_records_dataset.csv')
+df.head()
+
+data = df[['anaemia', 'diabetes', 'high_blood_pressure', 'sex', 'smoking']]
+corr = data.corr()
+
+#############################################
+#############  DATA EXPLORATION  ############
+############################################# 
+
+# create correlation matrix
+def CorrMtx(data, dropDuplicates=True):
+    if dropDuplicates:
+        mask = np.zeros_like(data, dtype=np.bool)
+        mask[np.triu_indices_from(mask)] = True
+        
+    f, ax = plt.subplots(figsize=(11, 9))
+    
+    if dropDuplicates:
+        sns.heatmap(data, mask=mask,
+                square=True,
+                annot=True,
+                linewidth=.5, cbar_kws={"shrink": .5}, ax=ax)
+    else:
+        sns.heatmap(data,
+                square=True,
+                annot=True,
+                linewidth=.5, cbar_kws={"shrink": .5}, ax=ax)
+
+CorrMtx(corr,dropDuplicates=True)
+
+# chi square test to find best distribution
+dist_names = ['norm','invgauss','gamma','lognorm', 't']
+
+percentile_bins = x
+percentile_cutoffs = np.percentile(data, percentile_bins)
+observed_frequency, bins = (np.histogram(data, bins=percentile_cutoffs))
+
+chisquares = []
+for distribution in dist_names:
+    dist = getattr(stats, distribution)
+    param = dist.fit(data)
+    cdf_fitted = dist.cdf(percentile_cutoffs, *param)
+    expected_frequency = []
+    for bin in range(len(percentile_bins)-1):
+        expected_cdf_area = cdf_fitted[bin+1] - cdf_fitted[bin]
+        expected_frequency.append(expected_cdf_area)
+    
+    expected_frequency = np.array(expected_frequency) * len(expected_frequency)
+    cum_expected_frequency = np.cumsum(expected_frequency)
+
+    chi_test = chisquare(f_obs=observed_frequency,f_exp=cum_expected_frequency)
+    chisquares.append(chi_test.statistic)
+    
+res = pd.DataFrame()
+res['Distribution'] = dist_names
+res['Chi-Square'] = chisquares
+res.sort_values(['Chi-Square'], inplace=True)
+
+# KS Test to evaluate p value
+print ('\nDistributions listed by Betterment of fit:')
+print ('............................................')
+print (res)
+
+pvalues = []
+for distribution in dist_names:
+    dist = getattr(stats, distribution)
+    param = dist.fit(data)
+    test_stat = stats.kstest(data, distribution, args = param)
+    pvalues.append(test_stat.pvalue)
+
+results = pd.DataFrame()
+results['Distribution'] = dist_names
+results['pvalue'] = pvalues
+results.sort_values(['pvalue'], inplace=True)
+
+print ('\nDistributions listed by Betterment of fit:')
+print ('............................................')
+print (results)
+
+# distribution fitting
+shape, loc, scale = gamma.fit(data)
+plt.hist(data, density=True, alpha=0.6)
+
+xmin, xmax = plt.xlim()
+x = np.linspace(xmin, xmax, 100)
+y = gamma.pdf(x, shape, loc, scale)
+plt.plot(x, y, 'k', linewidth=2)
+title = "Fit results: shape = %.2f  loc = %.2f  scale = %.2f" % (shape, loc, scale)
+plt.title(title)
+
+plt.show()
+
+# find P(smoking|man)
+man = df[df.sex == 1]
+p_man = len(man)/float(len(df.sex))
+
+smoking = df[df.smoking == 1]
+p_smoking = len(smoking)/float(len(df.smoking))
+
+smoking_man = df[(df.smoking == 1) & (df.sex == 1)]
+p_smoking_man = len(smoking_man)/float(len(smoking))
+
+print(p_smoking_man)
+
+p_smoking_given_man = p_smoking_man * p_smoking / p_man
+
+print(p_smoking_given_man)
+
+average = np.mean(df.serum_sodium)
+stdev = np.std(df.serum_sodium)
+
+# assume gaussian, probability value greater than 140
+p_greater_than_140 = norm.sf(140,average,stdev)
+print(p_greater_than_140)
+
+df.groupby('DEATH_EVENT').mean()
+df.groupby('DEATH_EVENT').median()
+
+# distribution of serum sodium based on sex to death event
+bins = np.linspace(df.serum_sodium.min(), df.serum_sodium.max(), 10)
+g = sns.FacetGrid(df, col="sex", hue="DEATH_EVENT", palette="Set1", col_wrap=2)
+g.map(plt.hist, 'serum_sodium', bins=bins, ec="k")
+
+g.axes[-1].legend()
+plt.show()
+
+# distribution of age based on sex to death event
+bins = np.linspace(df.age.min(), df.age.max(), 10)
+g = sns.FacetGrid(df, col="sex", hue="DEATH_EVENT", palette="Set1", col_wrap=2)
+g.map(plt.hist, 'age', bins=bins, ec="k")
+
+g.axes[-1].legend()
+plt.show()
+
+#################################################
+#######          DATA SELECTION          ########
+#################################################
+
+from sklearn import preprocessing
+from sklearn.model_selection import train_test_split
+
+feature = df.drop(columns='time')
+y = feature.pop('DEATH_EVENT')
+
+X = feature.astype('float64')
+X = preprocessing.StandardScaler().fit(X).transform(X)
+
+# check if data is balanced
+from imblearn.over_sampling import SMOTE
+
+columns = feature.columns
+os = SMOTE(random_state=0)
+os_data_X,os_data_y=os.fit_sample(training_data, training_label)
+os_data_X = pd.DataFrame(data=os_data_X,columns=columns )
+os_data_y= pd.DataFrame(data=os_data_y,columns=['y'])
+# we can Check the numbers of our data
+print("length of oversampled data is ",len(os_data_X))
+print("Number of no subscription in oversampled data",len(os_data_y[os_data_y['y']==0]))
+print("Number of subscription",len(os_data_y[os_data_y['y']==1]))
+print("Proportion of no subscription data in oversampled data is ",len(os_data_y[os_data_y['y']==0])/len(os_data_X))
+print("Proportion of subscription data in oversampled data is ",len(os_data_y[os_data_y['y']==1])/len(os_data_X))
+
+# selecting features and splitting
+import statsmodels.api as sm
+
+logit_model=sm.Logit(y,feature)
+result=logit_model.fit()
+print(result.summary2())
+
+training_data, validation_data, training_label, validation_label = train_test_split(X, y, test_size = 0.3, random_state=0)
+
+# implementation using LogReg 
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import classification_report
+
+logress = LogisticRegression(solver='sag')
+logress.fit(training_data, training_label)
+prediction_label_logress = logress.predict(validation_data)
+prediction_proba_logress = logress.predict_proba(validation_data)
+
+print(classification_report(validation_label,prediction_label_logress))
+
+from sklearn.metrics import log_loss
+
+logloss = log_loss(validation_label, prediction_proba_logress)
+
+print(logloss)
+
+# implementation using SVM
+from sklearn.svm import SVC
+
+svm = SVC(kernel='sigmoid',gamma='scale')
+svm.fit(training_data, training_label)
+prediction_label_svm = svm.predict(validation_data)
+
+print(classification_report(validation_label,prediction_label_svm))
+
+# implementation using Random Forest
+from sklearn.ensemble import RandomForestClassifier
+
+forest = RandomForestClassifier(n_estimators=100,random_state=0)
+forest.fit(training_data, training_label)
+prediction_label_forest = forest.predict(validation_data)
+
+print(classification_report(validation_label,prediction_label_forest))
